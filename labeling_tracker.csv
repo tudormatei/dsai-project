@@ -1,7 +1,6 @@
 window_id,user_id,activity,start_time,end_time,periodicity,temporal_stability,coordination,labeler_name,confidence,notes,timestamp
-1,8,Walking,100.0,103.0,,,,,,,
+1,8,Walking,100.0,103.0,,,,,,No sensor data,
 2,8,Walking,102.25,105.25,,,,,,,
 3,8,Walking,104.5,107.5,,,,,,,
 4,8,Jogging,150.0,153.0,,,,,,,
 5,8,Sitting,200.0,203.0,,,,,,,
-
