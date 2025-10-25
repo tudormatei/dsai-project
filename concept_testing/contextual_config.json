@@ -1,0 +1,10 @@
+{
+  "motion_intensity": true,
+  "vertical_dominance": true,
+  "periodicity": false,
+  "temporal_stability": false,
+  "coordination": false,
+  "directional_variability": false,
+  "burstiness": false,
+  "balance_shift": false
+}
