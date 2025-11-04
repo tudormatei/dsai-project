@@ -78,10 +78,11 @@ def create_preprocessing_slide_2():
     
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
     
-    # Generate data
+    # Generate data with correct 20Hz sampling rate for 3-second windows
+    # 60 samples over 3 seconds = 20 Hz (matches actual project)
     np.random.seed(42)
-    n_samples = 300
-    time_points = np.linspace(0, 3, n_samples)
+    n_samples = 180  # 180 samples to show 9 seconds (allows multiple windows)
+    time_points = np.linspace(0, 9, n_samples)  # 20 Hz: 180 samples / 9 seconds
     
     x_raw = 5 * np.sin(2 * np.pi * time_points) + np.random.normal(0, 2, n_samples)
     y_raw = 8 * np.cos(2 * np.pi * time_points * 1.5) + np.random.normal(0, 3, n_samples)
@@ -129,10 +130,10 @@ def create_preprocessing_slide_2():
     ax2.grid(True, alpha=0.3)
     ax2.set_ylim(-4, 4)
     
-    # 3. Windowing
+    # 3. Windowing (60 samples per window at 20Hz = 3 seconds)
     window_size = 60
     n_windows = 3
-    window_start = 50
+    window_start = 10  # Start window at 10 samples = 0.5 seconds
     
     ax3.plot(time_points, x_clipped, 'gray', alpha=0.3, linewidth=1)
     
@@ -154,10 +155,12 @@ def create_preprocessing_slide_2():
     ax3.legend()
     ax3.grid(True, alpha=0.3)
     
-    # 4. Final Result
-    ax4.plot(range(60), x_clipped[50:110], 'r-', linewidth=2, label='X-axis', alpha=0.8)
-    ax4.plot(range(60), y_clipped[50:110], 'g-', linewidth=2, label='Y-axis', alpha=0.8)
-    ax4.plot(range(60), z_clipped[50:110], 'b-', linewidth=2, label='Z-axis', alpha=0.8)
+    # 4. Final Result (show first window as example)
+    first_window_start = window_start
+    first_window_end = first_window_start + window_size
+    ax4.plot(range(60), x_clipped[first_window_start:first_window_end], 'r-', linewidth=2, label='X-axis', alpha=0.8)
+    ax4.plot(range(60), y_clipped[first_window_start:first_window_end], 'g-', linewidth=2, label='Y-axis', alpha=0.8)
+    ax4.plot(range(60), z_clipped[first_window_start:first_window_end], 'b-', linewidth=2, label='Z-axis', alpha=0.8)
     ax4.set_title('4. Final Processed Window', fontsize=14, fontweight='bold')
     ax4.set_xlabel('Sample Index (0-59)')
     ax4.set_ylabel('Normalized Value')

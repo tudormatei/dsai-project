@@ -21,10 +21,10 @@ sns.set_palette("husl")
 def create_preprocessing_pipeline_visualization():
     """Create comprehensive preprocessing pipeline visualization"""
     
-    # Generate realistic sensor data
+    # Generate realistic sensor data with correct 20Hz sampling rate
     np.random.seed(42)
-    n_samples = 1000
-    time_points = np.linspace(0, 10, n_samples)  # 10 seconds of data
+    n_samples = 400  # 400 samples at 20 Hz = 20 seconds of data
+    time_points = np.linspace(0, 20, n_samples)  # 20 Hz sampling rate
     
     # Simulate raw accelerometer data with different scales and noise
     x_raw = 5 * np.sin(2 * np.pi * time_points) + np.random.normal(0, 2, n_samples)
@@ -116,9 +116,10 @@ def create_preprocessing_pipeline_visualization():
              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     # 4. Windowing Process (Middle Left)
-    window_size = 60  # 60 samples per window
+    # 60 samples at 20 Hz = 3 seconds per window
+    window_size = 60  
     n_windows = 5  # Show 5 example windows
-    window_start = 200  # Start from sample 200
+    window_start = 40  # Start from sample 40 (2 seconds in)
     
     ax4 = plt.subplot(3, 3, 4)
     
