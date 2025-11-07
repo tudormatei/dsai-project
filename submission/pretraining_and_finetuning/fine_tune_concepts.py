@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report, roc_auc_score
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import os
+from pathlib import Path
 import pickle
 from typing import Tuple, List, Optional
 import warnings
@@ -46,6 +46,11 @@ if USE_FIXED_SEED:
     print("Using fixed random seed for reproducibility")
 else:
     print("Using non-deterministic random initialization (results will vary)")
+
+# Paths relative to the new submission directory structure
+CURRENT_DIR = Path(__file__).resolve().parent
+SUBMISSION_DIR = CURRENT_DIR.parent
+DATA_DIR = SUBMISSION_DIR / 'data'
 
 
 class ConceptDataset(Dataset):
@@ -118,7 +123,6 @@ class PretrainedConceptPredictor(nn.Module):
             nn.Dropout(0.2)
         )
         
-        # Separate classification heads for each concept (3 classes each)
         self.concept_heads = nn.ModuleList([
             nn.Linear(hidden_dim // 4, num_classes) for _ in range(num_concepts)
         ])
@@ -129,7 +133,8 @@ class PretrainedConceptPredictor(nn.Module):
         encoder = ImprovedTimeSeriesEncoder(input_dim=input_dim, hidden_dim=hidden_dim)
         
         # Load pretrained weights
-        if os.path.exists(path):
+        path = Path(path)
+        if path.exists():
             checkpoint = torch.load(path, map_location='cpu')
             # Filter out projection head weights
             encoder_state_dict = {}
@@ -243,18 +248,15 @@ def extract_window_robust(df_sensor, window_row, time_tolerance=0.5, target_leng
 def load_and_prepare_data():
     """Load and prepare data for concept prediction using submission data."""
     print("Loading data from submission/data/...")
-    
-    # Get the project root directory (assuming script is in pretraining/)
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     # Load sensor data
-    sensor_path = os.path.join(project_root, 'submission', 'data', 'final_dataset.csv')
+    sensor_path = DATA_DIR / 'final_dataset.csv'
     df_sensor = pd.read_csv(sensor_path)
-    
+
     # Load window labels
-    windows_path = os.path.join(project_root, 'submission', 'data', 'final_window_labels.csv')
+    windows_path = DATA_DIR / 'final_window_labels.csv'
     df_windows = pd.read_csv(windows_path)
-    
+
     print(f"Sensor data: {len(df_sensor)} readings")
     print(f"Window labels: {len(df_windows)} windows")
     
@@ -472,7 +474,7 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
     final_windows_list = [final_windows[i] for i in range(len(final_windows))]
     
     augmentation_factor = len(final_windows) / n_original
-    print(f"\n✅ Augmentation complete!")
+    print(f"\nAugmentation complete!")
     print(f"   Original samples: {n_original}")
     print(f"   Augmented samples: {len(final_windows)}")
     print(f"   Augmentation factor: {augmentation_factor:.2f}x")
@@ -529,7 +531,7 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
         # Create a combined stratification label
         # Use the first concept for stratification (or combine multiple concepts)
         # For simplicity, we'll stratify on the first concept and validate all
-        stratify_labels = class_indices[:, 0]  # Use first concept for stratification
+        stratify_labels = class_indices[:, 0]  
         
         try:
             # Create stratified split
@@ -538,7 +540,7 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
                 indices,
                 test_size=test_size,
                 stratify=stratify_labels,
-                random_state=42 + attempt  # Vary random state on each attempt
+                random_state=42 + attempt  # Vary random state on each attemp
             )
         except ValueError as e:
             # If stratification fails (e.g., not enough samples per class), use random split
@@ -634,8 +636,7 @@ def train_concept_predictor():
     # ------------------------------------------------------------------
     # 2. Standardize each axis using the pretraining scaler (or create one)
     # ------------------------------------------------------------------
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    scaler_path = os.path.join(project_root, 'pretraining', 'improved_scaler.pkl')
+    scaler_path = CURRENT_DIR / 'improved_scaler.pkl'
 
     try:
         with open(scaler_path, 'rb') as f:
@@ -708,7 +709,7 @@ def train_concept_predictor():
     # ------------------------------------------------------------------
     # 6. Build the concept predictor (pretrained encoder + classification heads)
     # ------------------------------------------------------------------
-    pretrained_encoder_path = os.path.join(project_root, 'pretraining', 'improved_pretrained_encoder.pth')
+    pretrained_encoder_path = CURRENT_DIR / 'improved_pretrained_encoder.pth'
     model = PretrainedConceptPredictor(
         pretrained_encoder_path=pretrained_encoder_path,
         input_dim=3,
@@ -806,7 +807,7 @@ def train_concept_predictor():
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            model_path = os.path.join(project_root, 'pretraining', 'best_concept_predictor.pth')
+            model_path = CURRENT_DIR / 'best_concept_predictor.pth'
             torch.save(model.state_dict(), model_path)
             print(f'  New best model saved to {model_path}!')
         
@@ -819,7 +820,7 @@ def train_concept_predictor():
     # ------------------------------------------------------------------
     # 8. Reload best checkpoint and compute final evaluation artefacts
     # ------------------------------------------------------------------
-    model_path = os.path.join(project_root, 'pretraining', 'best_concept_predictor.pth')
+    model_path = CURRENT_DIR / 'best_concept_predictor.pth'
     model.load_state_dict(torch.load(model_path))
 
     model.eval()
@@ -982,7 +983,7 @@ def train_concept_predictor():
                    ha='center', va='bottom', fontsize=9)
     
     plt.tight_layout()
-    results_path = os.path.join(project_root, 'pretraining', 'concept_prediction_results.png')
+    results_path = CURRENT_DIR / 'concept_prediction_results.png'
     plt.savefig(results_path, dpi=300, bbox_inches='tight')
     plt.show()
     
