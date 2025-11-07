@@ -28,9 +28,6 @@ import warnings
 import random
 warnings.filterwarnings('ignore')
 
-# Set random seeds for reproducibility
-# Fixed seeds ensure fair comparison between augmentation and no augmentation
-# Without seeds, you'd need multiple runs to see the true effect due to variance
 RANDOM_SEED = 42
 USE_FIXED_SEED = True  # Set to False for non-deterministic runs (higher variance)
 
@@ -47,7 +44,6 @@ if USE_FIXED_SEED:
 else:
     print("Using non-deterministic random initialization (results will vary)")
 
-# Paths relative to the new submission directory structure
 CURRENT_DIR = Path(__file__).resolve().parent
 SUBMISSION_DIR = CURRENT_DIR.parent
 DATA_DIR = SUBMISSION_DIR / 'data'
@@ -76,8 +72,6 @@ class ConceptDataset(Dataset):
     def __getitem__(self, idx):
         window = self.windows[idx]
         concept_label = self.concept_labels[idx]
-        # Transpose for Conv1d: (window_size, 3) -> (3, window_size)
-        # Convert labels from [0.0, 0.5, 1.0] to class indices [0, 1, 2]
         class_indices = (concept_label * 2).astype(int)
         return torch.FloatTensor(window.T), torch.LongTensor(class_indices)
 
@@ -105,15 +99,12 @@ class PretrainedConceptPredictor(nn.Module):
         self.num_concepts = num_concepts
         self.num_classes = num_classes
         
-        # Load pretrained encoder
         self.encoder = self._load_pretrained_encoder(pretrained_encoder_path, input_dim, hidden_dim)
         
         if freeze_encoder:
-            # Freeze encoder parameters
             for param in self.encoder.parameters():
                 param.requires_grad = False
         
-        # Shared feature processing
         self.shared_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
@@ -129,14 +120,11 @@ class PretrainedConceptPredictor(nn.Module):
         
     def _load_pretrained_encoder(self, path: str, input_dim: int, hidden_dim: int):
         """Load pretrained encoder architecture."""
-        # Create encoder with same architecture as pretraining
         encoder = ImprovedTimeSeriesEncoder(input_dim=input_dim, hidden_dim=hidden_dim)
         
-        # Load pretrained weights
         path = Path(path)
         if path.exists():
             checkpoint = torch.load(path, map_location='cpu')
-            # Filter out projection head weights
             encoder_state_dict = {}
             for key, value in checkpoint.items():
                 if not key.startswith('projection.'):
@@ -151,13 +139,11 @@ class PretrainedConceptPredictor(nn.Module):
     
     def forward(self, x):
         """Forward pass through encoder and concept heads."""
-        # Get features from pretrained encoder
+
         features = self.encoder.get_features(x)
         
-        # Shared processing
         shared_features = self.shared_head(features)
         
-        # Predict concepts (each head outputs logits for 3 classes)
         concept_outputs = [head(shared_features) for head in self.concept_heads]
         
         return concept_outputs
@@ -174,7 +160,6 @@ class ImprovedTimeSeriesEncoder(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         
-        # Build encoder layers
         layers = []
         in_channels = input_dim
         
@@ -213,32 +198,26 @@ def extract_window_robust(df_sensor, window_row, time_tolerance=0.5, target_leng
     start_time = window_row['start_time']
     end_time = window_row['end_time']
     
-    # Get data for this user/activity
     user_activity_data = df_sensor[(df_sensor['user'] == user) & 
                                   (df_sensor['activity'] == activity)].copy()
     
     if len(user_activity_data) == 0:
         return None
     
-    # Find data within time window with tolerance
     mask = ((user_activity_data['time_s'] >= start_time - time_tolerance) & 
             (user_activity_data['time_s'] <= end_time + time_tolerance))
     
     window_data = user_activity_data[mask]
     
-    if len(window_data) < 10:  # Need minimum samples
+    if len(window_data) < 10:  
         return None
     
-    # Extract sensor readings
     sensor_data = window_data[['x-axis', 'y-axis', 'z-axis']].values
     
-    # Pad or truncate to fixed length
     if len(sensor_data) > target_length:
-        # Randomly sample if too long
         indices = np.random.choice(len(sensor_data), target_length, replace=False)
         sensor_data = sensor_data[indices]
     elif len(sensor_data) < target_length:
-        # Pad with last value if too short
         padding = np.tile(sensor_data[-1:], (target_length - len(sensor_data), 1))
         sensor_data = np.vstack([sensor_data, padding])
     
@@ -260,18 +239,15 @@ def load_and_prepare_data():
     print(f"Sensor data: {len(df_sensor)} readings")
     print(f"Window labels: {len(df_windows)} windows")
     
-    # Extract concept labels (5 concepts) - using the correct concepts
     concept_columns = ['periodicity', 'temporal_stability', 'coordination', 
                       'movement_variability', 'movement_consistency']
     
-    # Verify all concept columns exist
     missing_cols = [col for col in concept_columns if col not in df_windows.columns]
     if missing_cols:
         raise ValueError(f"Missing concept columns in window labels: {missing_cols}")
     
     concept_labels = df_windows[concept_columns].values
     
-    # Extract windows from sensor data
     print("Extracting windows from sensor data...")
     windows = []
     valid_indices = []
@@ -284,7 +260,6 @@ def load_and_prepare_data():
         else:
             print(f"Warning: Failed to extract window {idx}")
     
-    # Filter concept labels to match valid windows
     concept_labels = concept_labels[valid_indices]
     
     print(f"Successfully extracted {len(windows)} windows")
@@ -307,7 +282,7 @@ def augment_jitter(data, sigma=0.05):
     Returns:
         Augmented window with jitter applied per axis at every timestep.
     """
-    # data shape: (timesteps, 3)
+
     noise = np.random.normal(0, sigma, data.shape)
     return data + noise
 
@@ -322,8 +297,6 @@ def augment_scaling(data, sigma=0.1):
     Returns:
         Window scaled independently per axis but consistently across time.
     """
-    # data shape: (timesteps, 3)
-    # Apply same scaling factor to all timesteps but different for each axis
     scale_factors = np.random.normal(1.0, sigma, (1, 3))
     return data * scale_factors
 
@@ -337,7 +310,6 @@ def augment_rotation(data):
     Returns:
         Window rotated by a random angle sampled from ±30 degrees.
     """
-    # data shape: (timesteps, 3)
     angle = np.random.uniform(-np.pi/6, np.pi/6)  # ±30 degrees
     cos_a, sin_a = np.cos(angle), np.sin(angle)
     rotation_matrix = np.array([
@@ -345,7 +317,6 @@ def augment_rotation(data):
         [sin_a, cos_a, 0],
         [0, 0, 1]
     ])
-    # Apply rotation to each timestep
     return np.dot(data, rotation_matrix.T)
 
 
@@ -370,7 +341,6 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
     n_original = len(windows)
     class_indices = (concept_labels * 2).astype(int)
     
-    # Analyze class distribution to identify rare classes
     print("\nAnalyzing class distribution for augmentation...")
     class_counts = {}
     for i, concept in enumerate(concept_columns):
@@ -378,7 +348,6 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
         class_counts[concept] = {int(cls): int(cnt) for cls, cnt in zip(unique, counts)}
         print(f"  {concept}: {class_counts[concept]}")
     
-    # Find rare classes (classes with < 20% of max class count)
     rare_classes = {}
     for i, concept in enumerate(concept_columns):
         counts = class_counts[concept]
@@ -391,24 +360,19 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
     
     print(f"\nRare classes identified: {rare_classes}")
     
-    # Convert windows to numpy array for easier manipulation
-    windows_array = np.array([w for w in windows])  # (n_samples, timesteps, 3)
+    windows_array = np.array([w for w in windows])  
     
-    # Create augmented data
     augmented_windows = [windows_array]
     augmented_labels = [concept_labels]
     
-    # Base augmentation for all samples
     print(f"\nApplying base augmentation (factor={base_factor})...")
     for aug_iter in range(base_factor):
         aug_windows = []
         aug_labels = []
         
-        # Set seed for this augmentation iteration to ensure reproducibility
         np.random.seed(RANDOM_SEED + aug_iter)
         
         for idx in range(n_original):
-            # Randomly select augmentation type
             aug_type = np.random.choice(['jitter', 'scaling', 'rotation', 'none'])
             
             window = windows_array[idx]
@@ -427,13 +391,11 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
         augmented_windows.append(np.array(aug_windows))
         augmented_labels.append(np.array(aug_labels))
     
-    # Additional augmentation for rare classes
     if rare_class_boost > 0:
         print(f"\nApplying additional augmentation for rare classes (boost={rare_class_boost})...")
         for i, concept in enumerate(concept_columns):
             if concept in rare_classes and len(rare_classes[concept]) > 0:
                 rare_cls = rare_classes[concept]
-                # Find indices of samples with rare classes for this concept
                 rare_indices = [
                     idx for idx in range(n_original)
                     if class_indices[idx, i] in rare_cls
@@ -445,11 +407,9 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
                         aug_windows = []
                         aug_labels = []
                         
-                        # Set seed for this boost iteration
                         np.random.seed(RANDOM_SEED + 1000 + i * 100 + boost_iter)
                         
                         for idx in rare_indices:
-                            # Randomly select augmentation type
                             aug_type = np.random.choice(['jitter', 'scaling', 'rotation'])
                             
                             window = windows_array[idx]
@@ -466,11 +426,9 @@ def augment_training_data(windows, concept_labels, concept_columns, base_factor=
                         augmented_windows.append(np.array(aug_windows))
                         augmented_labels.append(np.array(aug_labels))
     
-    # Combine all augmented data
     final_windows = np.concatenate(augmented_windows, axis=0)
     final_labels = np.concatenate(augmented_labels, axis=0)
     
-    # Convert back to list format (for compatibility with existing code)
     final_windows_list = [final_windows[i] for i in range(len(final_windows))]
     
     augmentation_factor = len(final_windows) / n_original
@@ -508,7 +466,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
     print("CREATING STRATIFIED TRAIN/TEST SPLIT")
     print("=" * 60)
     
-    # Convert concept labels to class indices (0, 1, 2)
     class_indices = (concept_labels * 2).astype(int)
     n_samples = len(windows)
     n_concepts = len(concept_columns)
@@ -516,7 +473,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
     print(f"Total samples: {n_samples}")
     print(f"Number of concepts: {n_concepts}")
     
-    # Check class distribution for each concept
     print("\nClass distribution (before split):")
     print("-" * 60)
     for i, concept in enumerate(concept_columns):
@@ -526,24 +482,18 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
             print(f"Class {cls}: {cnt:4d}  ", end="")
         print()
     
-    # Try multiple splits until we get one where all classes are present in both sets
     for attempt in range(max_attempts):
-        # Create a combined stratification label
-        # Use the first concept for stratification (or combine multiple concepts)
-        # For simplicity, we'll stratify on the first concept and validate all
         stratify_labels = class_indices[:, 0]  
         
         try:
-            # Create stratified split
             indices = np.arange(n_samples)
             train_idx, val_idx = train_test_split(
                 indices,
                 test_size=test_size,
                 stratify=stratify_labels,
-                random_state=42 + attempt  # Vary random state on each attemp
+                random_state=42 + attempt  
             )
         except ValueError as e:
-            # If stratification fails (e.g., not enough samples per class), use random split
             print(f"⚠️  Stratification failed on attempt {attempt + 1}: {e}")
             print("   Falling back to random split...")
             indices = np.arange(n_samples)
@@ -553,14 +503,13 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
                 random_state=42 + attempt
             )
         
-        # Validate that all classes are present in both train and validation for ALL concepts
         all_valid = True
         missing_classes = []
         
         for i, concept in enumerate(concept_columns):
             train_classes = set(class_indices[train_idx, i])
             val_classes = set(class_indices[val_idx, i])
-            all_classes = set([0, 1, 2])  # Expected classes
+            all_classes = set([0, 1, 2])  
             
             train_missing = all_classes - train_classes
             val_missing = all_classes - val_classes
@@ -584,7 +533,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
             print("-" * 60)
             
             for i, concept in enumerate(concept_columns):
-                # Train distribution
                 train_unique, train_counts = np.unique(class_indices[train_idx, i], return_counts=True)
                 train_dict = {cls: 0 for cls in [0, 1, 2]}
                 for cls, cnt in zip(train_unique, train_counts):
@@ -594,7 +542,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
                     print(f"{train_dict[cls]:8d}  ", end="")
                 print()
                 
-                # Validation distribution
                 val_unique, val_counts = np.unique(class_indices[val_idx, i], return_counts=True)
                 val_dict = {cls: 0 for cls in [0, 1, 2]}
                 for cls, cnt in zip(val_unique, val_counts):
@@ -607,7 +554,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
             print("=" * 60)
             return train_idx, val_idx
         
-        # If validation failed, print warning and retry
         if attempt < 5:  # Only print first few attempts
             print(f"⚠️  Attempt {attempt + 1} failed: Missing classes detected")
             for missing in missing_classes:
@@ -616,7 +562,6 @@ def create_stratified_split(windows, concept_labels, concept_columns, test_size=
                 if missing['val_missing']:
                     print(f"   {missing['concept']}: Missing in val: {missing['val_missing']}")
     
-    # If we exhausted all attempts, raise an error
     raise ValueError(
         f"Could not create a valid split after {max_attempts} attempts. "
         f"Some concepts may not have enough samples for all classes. "
@@ -653,7 +598,6 @@ def train_concept_predictor():
             pickle.dump(scaler, f)
         print("New scaler created and saved")
     
-    # Apply scaling window by window to preserve structure
     windows_scaled = [scaler.transform(window) for window in windows]
 
     # ------------------------------------------------------------------
@@ -680,8 +624,8 @@ def train_concept_predictor():
             train_windows,
             train_labels,
             concept_columns,
-            base_factor=10,  # 10x base augmentation
-            rare_class_boost=5  # 5x additional augmentation for rare classes
+            base_factor=10,  
+            rare_class_boost=5  
         )
     else:
         print("\n" + "=" * 60)
@@ -696,7 +640,7 @@ def train_concept_predictor():
     # 5. Wrap numpy data in PyTorch datasets and deterministic loaders
     # ------------------------------------------------------------------
     train_dataset = ConceptDataset(train_windows_aug, train_labels_aug)
-    val_dataset = ConceptDataset(val_windows, val_labels)  # No augmentation for validation
+    val_dataset = ConceptDataset(val_windows, val_labels)  
 
     generator = torch.Generator()
     generator.manual_seed(RANDOM_SEED)
@@ -715,7 +659,7 @@ def train_concept_predictor():
         input_dim=3,
         hidden_dim=64,
         num_concepts=5,
-        num_classes=3,  # 3 classes: 0.0, 0.5, 1.0
+        num_classes=3,  
         freeze_encoder=True
     )
     
@@ -736,7 +680,6 @@ def train_concept_predictor():
     val_losses = []
     
     for epoch in range(num_epochs):
-        # Training loop ---------------------------------------------------
         model.train()
         train_loss = 0.0
         
@@ -744,9 +687,8 @@ def train_concept_predictor():
             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
             
             optimizer.zero_grad()
-            outputs = model(batch_x)  # List of 5 tensors, each (batch_size, 3)
+            outputs = model(batch_x)  
 
-            # Multi-task loss: average over the five concept heads
             loss = 0.0
             for i in range(5):
                 loss += criterion(outputs[i], batch_y[:, i])
@@ -757,10 +699,9 @@ def train_concept_predictor():
             
             train_loss += loss.item()
         
-        # Validation loop -------------------------------------------------
         model.eval()
         val_loss = 0.0
-        val_predictions = []  # List of lists: [[pred_concept0], [pred_concept1], ...]
+        val_predictions = []  
         val_targets = []
         
         with torch.no_grad():
@@ -774,7 +715,6 @@ def train_concept_predictor():
                 loss = loss / 5.0
                 val_loss += loss.item()
                 
-                # Store predictions per concept for later metric computation
                 batch_predictions = [torch.argmax(outputs[i], dim=1).cpu().numpy() for i in range(5)]
                 if len(val_predictions) == 0:
                     val_predictions = [[pred] for pred in batch_predictions]
@@ -784,7 +724,6 @@ def train_concept_predictor():
 
                 val_targets.append(batch_y.cpu().numpy())
         
-        # Aggregate metrics -----------------------------------------------
         train_loss /= len(train_loader)
         val_loss /= len(val_loader)
         
@@ -824,8 +763,8 @@ def train_concept_predictor():
     model.load_state_dict(torch.load(model_path))
 
     model.eval()
-    final_predictions = []  # List of lists: [[pred_concept0], [pred_concept1], ...]
-    final_pred_probs = []   # List of lists: [[prob_concept0], [prob_concept1], ...] for AUROC
+    final_predictions = []  
+    final_pred_probs = []   
     final_targets = []
     
     with torch.no_grad():
@@ -833,10 +772,8 @@ def train_concept_predictor():
             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
             outputs = model(batch_x)
             
-            # Get prediction probabilities (for AUROC)
             batch_pred_probs = [torch.softmax(outputs[i], dim=1).cpu().numpy() for i in range(5)]
             
-            # Get predictions (class indices)
             batch_predictions = [np.argmax(prob, axis=1) for prob in batch_pred_probs]
             
             if len(final_predictions) == 0:
@@ -849,12 +786,10 @@ def train_concept_predictor():
             
             final_targets.append(batch_y.cpu().numpy())
     
-    # Concatenate predictions and targets
     final_predictions = [np.concatenate(preds) for preds in final_predictions]
     final_pred_probs = [np.concatenate(probs, axis=0) for probs in final_pred_probs]
     final_targets = np.concatenate(final_targets)
     
-    # Calculate final metrics
     print("\n" + "=" * 60)
     print("FINAL EVALUATION RESULTS")
     print("=" * 60)
@@ -869,43 +804,33 @@ def train_concept_predictor():
         acc = accuracy_score(y_true, y_pred)
         f1 = f1_score(y_true, y_pred, average='weighted')
         
-        # Calculate AUROC - handle missing classes
-        # Use one-vs-rest approach: calculate AUROC for each class separately
         unique_classes = np.unique(y_true)
         n_classes = len(unique_classes)
         
         if n_classes < 2:
-            # Not enough classes for AUROC
             auroc = 0.5
             print(f"⚠️  {concept}: Only {n_classes} class(es) present, cannot calculate AUROC")
         else:
-            # Calculate one-vs-rest AUROC for each class that's present
             auroc_per_class = []
-            expected_classes = np.arange(y_probs.shape[1])  # [0, 1, 2] for 3-class problem
+            expected_classes = np.arange(y_probs.shape[1])  
             
             for class_idx in expected_classes:
                 if class_idx in unique_classes:
-                    # One-vs-rest: this class vs all others
                     y_binary = (y_true == class_idx).astype(int)
-                    # Use probability of this class
                     try:
                         class_auroc = roc_auc_score(y_binary, y_probs[:, class_idx])
                         auroc_per_class.append(class_auroc)
                     except Exception as e:
-                        # Skip if calculation fails (e.g., only one class in binary split)
                         pass
             
             if auroc_per_class:
-                # Average AUROC across all classes (macro average)
                 auroc = np.mean(auroc_per_class)
             else:
-                # Fallback if no valid AUROC could be calculated
                 auroc = 0.5
                 print(f"⚠️  {concept}: Could not calculate AUROC for any class")
         
         auroc_scores.append(auroc)
         
-        # Print class distribution for debugging
         class_counts = {int(c): int(np.sum(y_true == c)) for c in unique_classes}
         
         print(f"\n{concept.upper()}:")
@@ -914,12 +839,10 @@ def train_concept_predictor():
         print(f"  AUROC:    {auroc:.4f}")
         print(f"  Classes present: {sorted(unique_classes)} (counts: {class_counts})")
         
-        # Print confusion matrix
         cm = confusion_matrix(y_true, y_pred)
         print(f"  Confusion Matrix:")
         print(f"    {cm}")
     
-    # Overall metrics
     overall_acc = np.mean([accuracy_score(final_targets[:, i], final_predictions[i]) for i in range(5)])
     overall_auroc = np.mean(auroc_scores)
     
@@ -930,7 +853,6 @@ def train_concept_predictor():
     print(f"Average AUROC:    {overall_auroc:.4f}")
     print("=" * 60)
     
-    # Highlight rule-based concepts
     print("\n📊 RULE-BASED CONCEPTS PERFORMANCE:")
     print("-" * 60)
     mv_idx = concept_columns.index('movement_variability')
@@ -945,10 +867,8 @@ def train_concept_predictor():
     print(f"  AUROC:    {auroc_scores[mc_idx]:.4f}")
     print("=" * 60)
     
-    # Plot training curves
     fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
     
-    # Training/validation loss
     ax1.plot(train_losses, label='Train Loss', linewidth=2)
     ax1.plot(val_losses, label='Val Loss', linewidth=2)
     ax1.set_xlabel('Epoch')
@@ -957,7 +877,6 @@ def train_concept_predictor():
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # Accuracy and AUROC comparison
     accuracies = [accuracy_score(final_targets[:, i], final_predictions[i]) for i in range(5)]
     x = np.arange(len(concept_columns))
     width = 0.35
@@ -974,7 +893,6 @@ def train_concept_predictor():
     ax2.legend()
     ax2.grid(True, alpha=0.3, axis='y')
     
-    # Add value labels on bars
     for bars in [bars1, bars2]:
         for bar in bars:
             height = bar.get_height()
