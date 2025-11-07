@@ -63,3 +63,10 @@ Core notebooks (run in this order):
 5. Now to have the full CBM we have to combine the `sensor_data_to_concept_model.keras` then give the output of this to `concepts_to_true_labels_model.keras`. Run the `5_models_stitched_together.ipynb`.
 
 6. `CBM.ipynb` is the file that puts everything together, training and testing both the concept and activity predictors on the same training and test set. This is the proper end-to-end CBM architecture.
+
+## Alternate model: pretrained encoder + fine-tuning
+
+- Code lives in `alternate_model/`
+- Run `improved_pretraining.py` to self-supervise the encoder on sensor windows and write `improved_pretrained_encoder.pth` plus the scaler dump.
+- Run `fine_tune_concepts.py` to freeze that encoder, attach lightweight concept heads, optionally augment the submission data, and export `best_concept_predictor.pth` with evaluation plots.
+- `use_concept_predictor.py` reloads the fine-tuned weights and exposes a helper for predicting concepts on new sensor windows.
